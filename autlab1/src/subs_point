@@ -1,0 +1,22 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
+import rospy
+from geometry_msgs.msg import Point
+
+
+# Inicializar el nodo
+rospy.init_node('nodo_suscriptor_point')
+
+# Función de callback
+def callback_func(msg):
+    print("Punto leido: x={}, y={}, z={}".format(msg.x, msg.y, msg.z))
+
+# Declaración del suscriptor
+topic = 'topic_point'
+pub = rospy.Subscriber(topic, Point, callback_func)
+
+# Mantener el nodo activo (hasta que se detenga
+rospy.spin()
+

@@ -1,0 +1,37 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import rospy
+import random
+
+# from sensor_msgs.msg import Joy
+from geometry_msgs.msg import WrenchStamped
+
+# Inicializar el nodo
+rospy.init_node('nodo_publicador_datos_fuerza')
+
+# Declarar del publicador
+topic = 'datos_fuerza'
+pub = rospy.Publisher(topic, WrenchStamped, queue_size=10)
+# Creación de una instancia (vacía) del mensaje
+whrench_msg = WrenchStamped()
+
+# Seed random
+# Tiempo de ejecución del bucle (en Hz)
+rate = rospy.Rate(4)    # 4hz / 250ms
+while not rospy.is_shutdown():
+    n = random.randint(0,20)
+    # Asignar los valores al mensaje
+    whrench_msg.header.stamp = rospy.Time.now()
+    whrench_msg.header.frame_id = 'frame_datos_fuerza'
+    whrench_msg.wrench.force.x = (1.1 * n) * 1.00
+    whrench_msg.wrench.force.y = (2.2 * n) * 1.00
+    whrench_msg.wrench.force.z = (3.3 * n) * 1.00
+    whrench_msg.wrench.torque.x =( 1.3 * n) * 1.00
+    whrench_msg.wrench.torque.y =( 0.3 * n) * 1.00
+    whrench_msg.wrench.torque.z =( 3.2 * n) * 1.00
+
+    # Publicar el mensaje
+    pub.publish(whrench_msg)
+    # Esperar
+    rate.sleep()

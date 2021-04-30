@@ -1,0 +1,28 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
+import rospy
+from geometry_msgs.msg import WrenchStamped
+
+
+# Inicializar el nodo
+rospy.init_node('nodo_suscriptor_datos_fuerza')
+
+# Función de callback
+def callback_func(msg):
+    print("Fuerza leida: x={}, y={}, z={}".format(msg.wrench.force.x, 
+                                                  msg.wrench.force.y, 
+                                                  msg.wrench.force.z))
+
+    print("Torque leido: x={}, y={}, z={}".format(msg.wrench.torque.x, 
+                                                  msg.wrench.torque.y, 
+                                                  msg.wrench.torque.z))
+
+# Declaración del suscriptor
+topic = 'datos_fuerza'
+pub = rospy.Subscriber(topic, WrenchStamped, callback_func)
+
+# Mantener el nodo activo (hasta que se detenga
+rospy.spin()
+

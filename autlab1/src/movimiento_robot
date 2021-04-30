@@ -30,8 +30,8 @@ while not rospy.is_shutdown():
         twist.angular.z = 0.0   
 
     if counter > 300 and counter < 400:
-        twist.linear.x = 5.0
-        twist.linear.y = 5.0
+        twist.linear.x = 10.0
+        twist.linear.y = 10.0
         twist.linear.z = 0.0
         twist.angular.x = 5.0
         twist.angular.y = 5.0

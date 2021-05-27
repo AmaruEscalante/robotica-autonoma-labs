@@ -1,0 +1,124 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
+import rospy
+from sensor_msgs.msg import PointCloud2
+from pcl_helper import ros2pcl, pcl2ros, XYZRGB_to_XYZ, XYZ_to_XYZRGB
+import pcl
+
+def remocion_outliers(nube):
+    # ===================================================
+    # Filtro de remoción de outliers
+    # ===================================================
+
+    # Objeto de filtro
+    outlier_filter = nube.make_statistical_outlier_filter()
+
+    # Número de puntos del vecindario para analizar 
+    outlier_filter.set_mean_k(50)
+
+    # Thresold (factor de escala)
+    x = 1
+
+    # Cualquier punto con distancia media mayor que la global (distancia
+    # media+x*std_dev) será considerado un outlier
+    outlier_filter.set_std_dev_mul_thresh(x)
+
+    # Aplicar el filtro
+    cloud_filtered = outlier_filter.filter()
+    return cloud_filtered
+
+def downsample(nube_filtrada):
+    #-------------------------------------------------------------- DOWNSAMPLE
+    # Crear un filtro VoxelGrid para la nube de puntos
+    fvox = nube_filtrada.make_voxel_grid_filter()
+    # Tamaño de voxel
+    VOXEL_SIZE = 0.01
+    # Asignar el tamaño del voxel al filtro
+    fvox.set_leaf_size(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE)
+
+    # Ejecutar el filtro
+    cloud_filtered_down = fvox.filter()
+    return cloud_filtered_down
+
+def passthrough(nube_down, min_val, max_val):
+    #---------------------------------------------------------------PASS THROUGH
+    # Crear un filtro PassThrough
+    passt = nube_down.make_passthrough_filter()
+
+    # Assignar el eje y el rango para el filtro.
+    filter_axis = 'x'
+    passt.set_filter_field_name(filter_axis)
+    # min_val = 0.1
+    # max_val = -0.1
+    passt.set_filter_limits(min_val, max_val)
+
+    # Usar el filtro para obtener la nube de puntos resultante
+    return passt.filter()
+
+def segmentacion(nubepasada):
+    #---------------------------------------------------SEGMENTACION
+    # Crear el objeto para la segmentación
+    seg = nubepasada.make_segmenter()
+
+    # Asignar el modelo que se desea ajustar
+    seg.set_model_type(pcl.SACMODEL_PLANE)
+    # Uso de RANSAC
+    seg.set_method_type(pcl.SAC_RANSAC)
+
+    # Máxima distancia
+    max_distance = 10
+    seg.set_distance_threshold(max_distance)
+    # Función de segmentación con RANSAC para obtener los índices de los inliers
+    inliers, coefficients = seg.segment()
+    # Extracción de  inliers
+    cloud_inliers = nubepasada.extract(inliers, negative=False)
+    return cloud_inliers
+
+class SuscriptorNubePuntos(object):
+    def __init__(self):
+        topic = 'camera/depth_registered/points'
+        self.pub = rospy.Subscriber(topic, PointCloud2, self.callback_point)
+        self.cloud_mesa = PointCloud2()
+        self.cloud_objetos = PointCloud2()
+        
+    def callback_point(self, msg):
+        x = ros2pcl(msg)
+        x = XYZRGB_to_XYZ(x)
+        x = remocion_outliers(x)
+        x = downsample(x)
+        x_mesa = passthrough(x, min_val=0.5, max_val=1) # Mesa
+        x_objetos = passthrough(x, min_val=0, max_val=1) # Objetos
+        x_mesa = segmentacion(x_mesa)
+        x_objetos = segmentacion(x_objetos)
+        x_objetos = XYZ_to_XYZRGB(x_objetos, [100,100,100])
+        x_mesa = XYZ_to_XYZRGB(x_mesa, [230,100,130])
+        self.cloud_mesa = pcl2ros(x_mesa)
+        self.cloud_objetos = pcl2ros(x_objetos)
+
+    def get_cloud_points(self):
+        return self.cloud_mesa, self.cloud_objetos
+
+# Inicializar el nodo
+rospy.init_node('nodoros_filtraje_pub_sub')
+
+# Crear el suscriptor
+sub = SuscriptorNubePuntos()
+
+# Declarar topicos publicadores
+topic_mesa = 'mesa'
+topic_objetos = 'objetos'
+
+pub_mesa = rospy.Publisher(topic_mesa, PointCloud2, queue_size=10)
+pub_objetos = rospy.Publisher(topic_objetos, PointCloud2, queue_size=10)
+
+
+# Tiempo de ejecución del bucle (en Hz)
+rate = rospy.Rate(2)
+while not rospy.is_shutdown():
+    mesa, objetos  = sub.get_cloud_points()
+    pub_mesa.publish(mesa)
+    pub_objetos.publish(objetos)
+    # Esperar
+    rate.sleep()

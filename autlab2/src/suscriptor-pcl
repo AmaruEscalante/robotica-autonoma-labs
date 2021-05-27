@@ -1,0 +1,25 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
+import rospy
+from sensor_msgs.msg import PointCloud2
+from pcl_helper import ros2pcl, pcl2ros
+
+# Inicializar el nodo
+rospy.init_node('ros-pcl')
+
+# Función de callback
+def callback_func(msg):
+    # Convertir el mensaje ros2pcl
+    msg = ros2pcl(msg)
+    print("mensaje de ros2pcl: ", msg)
+    
+
+# Declaración del suscriptor
+topic = 'camera/depth_registered/points'
+pub = rospy.Subscriber(topic, PointCloud2, callback_func)
+
+# Mantener el nodo activo (hasta que se detenga
+rospy.spin()
+

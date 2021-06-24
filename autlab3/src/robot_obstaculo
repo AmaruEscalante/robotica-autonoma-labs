@@ -1,0 +1,127 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+from __future__ import print_function
+import rospy
+import numpy as np
+from sensor_msgs.msg import LaserScan
+from autlab3.msg import ArrayXY
+# from nav_msgs.msg import Odometry
+from geometry_msgs.msg import Twist
+import tf
+
+
+def rotFromQuat(q):
+    """ q = [ex, ey, ez, ew]
+    """
+    return np.array([[2.*(q[3]**2+q[0]**2)-1., 2.*(q[0]*q[1]-q[3]*q[2]), 2.*(q[0]*q[2]+q[3]*q[1])],
+                     [2.*(q[0]*q[1]+q[3]*q[2]), 2.*(q[3]**2+q[1]**2)-1., 2.*(q[1]*q[2]-q[3]*q[0])],
+                     [2.*(q[0]*q[2]-q[3]*q[1]), 2.*(q[1]*q[2]+q[3]*q[0]), 2.*(q[3]**2+q[2]**2)-1.]])
+
+
+def Tlidar_wrt_base():
+    """
+    Sistema del lidar con respecto a base_link (la base del robot)
+    """
+    tflistener = tf.TransformListener()
+    T = np.eye(4)
+    rospy.sleep(0.5)
+    try:
+        (trans, rot) = tflistener.lookupTransform('base_link', 'base_scan', rospy.Time(0))
+        T[0:3,0:3] = rotFromQuat(rot)
+        T[0:3,3] = trans
+    except:
+        pass
+    # Retorna la transformación homogénea del sistema del LiDAR con respecto al
+    # sistema de base del robot.
+    return T
+
+
+class Lidar_XY_SUS(object):
+    def __init__(self):
+        # Crear el suscriptor al tópico del LiDAR
+
+        topic = 'lidar_xy'
+        self.pub = rospy.Subscriber(topic, ArrayXY, self.callback_point)
+        # Esperar 1 segundo
+        rospy.sleep(1)
+        self.XY = ArrayXY()
+
+    # Suscriber de Lidar_xy
+    def callback_point(self, msg):
+        self.XY = msg
+    
+    def get_xy(self):
+        return self.XY
+
+# Inicializar el nodo
+rospy.init_node('nodo_robot_obstaculo')
+
+# Transformación del sistema del LiDAR al sistema del Robot
+T_BL = Tlidar_wrt_base()
+
+# Declarar del publicador
+topic = 'cmd_vel'
+pub_twist = rospy.Publisher(topic, Twist, queue_size=10)
+
+lidar_xy = Lidar_XY_SUS()
+
+# Movimiento del robot
+twist = Twist()
+twist.linear.x = 0.0
+twist.linear.y = 0.0
+twist.linear.z = 0.0
+twist.angular.x = 0.0
+twist.angular.y = 0.0
+twist.angular.z = 0.0
+
+# Tiempo de ejecución del bucle (en Hz)
+rate = rospy.Rate(1)
+while not rospy.is_shutdown():
+    xy_lidar = lidar_xy.get_xy()
+    # Coordenadas en el sistema del LiDAR
+    # x, y = lidar.get_xy()
+    x = xy_lidar.x
+    y = xy_lidar.y
+    # Conversión a coordenadas homogéneas
+    P = np.ones((4, len(x)))
+    P[0,:] = x
+    P[1,:] = y
+    P[2,:] = np.zeros((1,len(x)))   # El LiDAR mide z=0 en su propio sistema
+                
+    # Conversión de las coordenadas del sistema del LiDAR al sistema del Robot
+    P_robot = T_BL.dot(P)
+    xr = P_robot[0,:]     # x en sistema del robot
+    yr = P_robot[1,:]     # y en el sistema del robot
+
+    # Mover al robot y detenerlo si encuentra un obstaculo
+    # # 1. Avanza
+    # print('XR: ', xr)
+    # print('YR: ', yr)
+
+    # 2. Verifica si hay un obstaculo
+    xy_aux_x = []
+    xy_aux_y = []
+    for i in range(len(xy_lidar.x)):
+        # elimina los pares de x,y fuera de Y -0.2 a 0.2
+        if (xy_lidar.y[i] > -0.2) & (xy_lidar.y[i] < 0.2):
+            # xy_aux_x.append(xy_lidar.y[i])
+            xy_aux_x.append(xy_lidar.x[i])
+    # verifica si hay obstaculo al frente
+    for elem in xy_aux_x:
+        # Si hay un obstaculo cerca se detiene
+        if elem < 2:
+            print('ESTA DETENIDO', twist.linear.x)
+            twist.linear.x = 0.0 # X, Y, Z
+            break
+        else:
+            print('ESTA AVANZANDO', twist.linear.x)
+            twist.linear.x = 10.0
+            break
+
+    pub_twist.publish(twist)
+
+    # Esperar
+    rate.sleep()
+
+
